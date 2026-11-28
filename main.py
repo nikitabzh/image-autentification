@@ -1,5 +1,6 @@
 """Запуск: python main.py"""
 import io
+from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from PIL import Image, ImageTk
@@ -117,13 +118,29 @@ class App(tk.Tk):
         ttk.Label(win,textvariable=info).pack(pady=8)
         def add():
             paths = filedialog.askopenfilenames(parent=win,filetypes=[('Фотографии','*.jpg *.jpeg *.png *.bmp'),('Все файлы','*.*')])
-            # Обрабатываем весь пакет до изменения списка или базы.
-            try:
-                prepared = [self.enrollment_photo(prepare(p, use_sface=sface_available())) for p in paths]
-                photos.extend(prepared)
-                info.set(f'Новых фотографий: {len(photos)}')
-            except Exception as exc:
-                messagebox.showerror('Фото не добавлены',str(exc),parent=win)
+            if not paths:
+                return
+            use_sface = sface_available()
+            prepared, failed = [], []
+            for i, path in enumerate(paths, 1):
+                info.set(f'Обработка фото {i} из {len(paths)}…')
+                win.update_idletasks()
+                try:
+                    photo = prepare(path, use_sface=use_sface)
+                    prepared.append(self.enrollment_photo(photo) if use_sface else photo)
+                except (ValueError, OSError, Image.DecompressionBombError) as exc:
+                    name = Path(path).name
+                    detail = str(exc)
+                    failed.append(detail if detail.startswith(name + ':') else f'{name}: {detail}')
+            photos.extend(prepared)
+            info.set(f'Новых фотографий: {len(photos)}')
+            if failed:
+                details = '\n'.join(failed[:8])
+                if len(failed) > 8:
+                    details += f'\n… и ещё {len(failed) - 8}'
+                summary = f'Добавлено в список: {len(prepared)} из {len(paths)}. Пропущено: {len(failed)}.'
+                hint = '\nНажмите «Сохранить», чтобы записать принятые снимки в базу.' if prepared else ''
+                messagebox.showwarning('Загрузка фотографий', f'{summary}{hint}\n\n{details}', parent=win)
         def save():
             try:
                 self.db.save(*(v.get() for v in fields),photos,uid)

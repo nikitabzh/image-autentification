@@ -12,6 +12,8 @@ MODELS = Path(__file__).resolve().parent / 'models'
 DETECTOR = MODELS / 'face_detection_yunet_2023mar.onnx'
 RECOGNIZER = MODELS / 'face_recognition_sface_2021dec_int8.onnx'
 MAX_DISTANCE = 0.637
+PREFERRED_DETECTION_SCORE = 0.90
+MIN_DETECTION_SCORE = 0.80
 
 
 def available():
@@ -21,7 +23,7 @@ def available():
 @lru_cache(maxsize=1)
 def networks():
     # Буферы позволяют открыть модели по пути с кириллицей на Windows.
-    detector = cv2.FaceDetectorYN.create('onnx', DETECTOR.read_bytes(), b'', (320, 320), 0.90)
+    detector = cv2.FaceDetectorYN.create('onnx', DETECTOR.read_bytes(), b'', (320, 320), MIN_DETECTION_SCORE)
     recognizer = cv2.FaceRecognizerSF.create('onnx', RECOGNIZER.read_bytes(), b'')
     return detector, recognizer
 
@@ -33,6 +35,10 @@ def encode(rgb):
     frame = cv2.cvtColor(np.asarray(small), cv2.COLOR_RGB2BGR)
     detector.setInputSize(small.size)
     _, faces = detector.detect(frame)
+    if faces is not None:
+        confident = faces[faces[:, -1] >= PREFERRED_DETECTION_SCORE]
+        if len(confident):
+            faces = confident
     count = 0 if faces is None else len(faces)
     if count != 1:
         raise ValueError(f'Найдено лиц: {count}. Выберите снимок с одним лицом или обрежьте его.')
